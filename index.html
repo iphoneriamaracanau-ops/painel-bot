@@ -29,15 +29,15 @@
   .pausar { background: #e74c3c; color: white; }
   .retomar { background: #2ecc71; color: white; }
   #status { margin-top: 20px; font-size: 13px; color: #bbb; }
-  #convinfo { margin-top: 8px; font-size: 11px; color: #666; }
+  #convinfo { margin-top: 8px; font-size: 11px; color: #555; }
   #loader { display: none; margin-top: 15px; color: #aaa; }
 </style>
 </head>
 <body>
   <h3>🤖 Controle do Bot</h3>
   <p class="sub">iPhoneria Maracanaú</p>
-  <button id="btn" class="pausar" onclick="toggleBot()">⏸️ Pausar Bot</button>
-  <p id="status">⏳ Carregando...</p>
+  <button id="btn" class="pausar" onclick="toggleBot()" disabled>⏸️ Pausar Bot</button>
+  <p id="status">⏳ Aguardando conversa...</p>
   <p id="convinfo"></p>
   <p id="loader">⏳ Processando...</p>
 
@@ -45,57 +45,92 @@
     let convId = null;
     let pausado = false;
 
-    // Método 1: Pegar da URL
-    const params = new URLSearchParams(window.location.search);
-    const urlConvId = params.get('conversation_id');
+    // Escutar mensagens do Chatwoot (postMessage)
+    window.addEventListener('message', function(event) {
+      console.log('postMessage recebido:', JSON.stringify(event.data));
 
-    // Verificar se é válido (não é literal {{...}})
-    if (urlConvId && !urlConvId.includes('{') && !isNaN(urlConvId)) {
-      convId = urlConvId;
-      init();
-    } else {
-      // Método 2: Escutar mensagem do Chatwoot via postMessage
-      window.addEventListener('message', function(event) {
-        if (event.data && event.data.conversation) {
-          convId = event.data.conversation.id;
-          init();
-        }
-        // Formato alternativo do Chatwoot
-        if (event.data && event.data.id && !convId) {
-          convId = event.data.id;
-          init();
-        }
-      });
+      const data = event.data;
+      if (!data) return;
 
-      // Método 3: Tentar pegar da URL pai
-      try {
-        const parentUrl = document.referrer || window.parent.location.href;
-        const match = parentUrl.match(/conversation\/(\d+)/);
-        if (match) {
-          convId = match[1];
-          init();
-        }
-      } catch(e) {}
-
-      // Método 4: Pegar da URL atual (path)
-      const pathMatch = window.location.pathname.match(/(\d+)/);
-      if (!convId && pathMatch) {
-        convId = pathMatch[1];
-        init();
+      // Formato 1: { conversation: { id: 123 } }
+      if (data.conversation && data.conversation.id) {
+        setConvId(data.conversation.id);
       }
+      // Formato 2: { id: 123, type: 'conversation' }
+      else if (data.id && data.type === 'conversation') {
+        setConvId(data.id);
+      }
+      // Formato 3: { conversationId: 123 }
+      else if (data.conversationId) {
+        setConvId(data.conversationId);
+      }
+      // Formato 4: { currentConversationId: 123 }
+      else if (data.currentConversationId) {
+        setConvId(data.currentConversationId);
+      }
+      // Formato 5: direto como número ou string
+      else if (data.conversation_id) {
+        setConvId(data.conversation_id);
+      }
+    });
 
-      // Timeout — se não encontrou em 3s, mostrar erro
-      setTimeout(() => {
-        if (!convId) {
-          document.getElementById('status').innerText = '⚠️ Conversa não identificada';
-          document.getElementById('convinfo').innerText = 'URL: ' + window.location.href;
-          document.getElementById('btn').disabled = false;
-        }
-      }, 3000);
+    // Tentar pegar da URL do pai via referrer
+    try {
+      const ref = document.referrer;
+      console.log('Referrer:', ref);
+      const match = ref.match(/conversation[s]?\/(\d+)/);
+      if (match) {
+        setConvId(match[1]);
+      }
+    } catch(e) {
+      console.log('Erro referrer:', e);
     }
 
-    function init() {
+    // Pegar da URL atual
+    const params = new URLSearchParams(window.location.search);
+    const urlId = params.get('conversation_id');
+    if (urlId && !urlId.includes('{') && !isNaN(urlId)) {
+      setConvId(urlId);
+    }
+
+    // Solicitar dados ao Chatwoot pai
+    setTimeout(() => {
+      try {
+        window.parent.postMessage({ type: 'REQUEST_CONVERSATION_DATA' }, '*');
+        console.log('Solicitação enviada ao parent');
+      } catch(e) {}
+    }, 500);
+
+    // Fallback — pegar ID da URL do Chatwoot no parent
+    setTimeout(() => {
+      if (!convId) {
+        try {
+          const parentHref = window.parent.location.href;
+          const match = parentHref.match(/conversation[s]?\/(\d+)/);
+          if (match) {
+            setConvId(match[1]);
+          }
+        } catch(e) {
+          console.log('Não conseguiu acessar parent URL (cross-origin esperado)');
+        }
+      }
+    }, 1000);
+
+    // Timeout final
+    setTimeout(() => {
+      if (!convId) {
+        document.getElementById('status').innerText = '⚠️ ID não encontrado';
+        document.getElementById('convinfo').innerText = 'Tente reabrir a aba';
+        document.getElementById('btn').disabled = false;
+      }
+    }, 4000);
+
+    function setConvId(id) {
+      if (convId) return; // já tem ID
+      convId = String(id);
+      console.log('convId definido:', convId);
       document.getElementById('convinfo').innerText = 'Conversa #' + convId;
+      document.getElementById('btn').disabled = false;
       checkStatus();
     }
 
@@ -127,7 +162,7 @@
 
     async function toggleBot() {
       if (!convId) {
-        document.getElementById('status').innerText = '❌ ID da conversa não encontrado';
+        document.getElementById('status').innerText = '❌ ID não encontrado';
         return;
       }
       const btn = document.getElementById('btn');
@@ -145,7 +180,7 @@
           pausado = !pausado;
           updateUI();
         } else {
-          document.getElementById('status').innerText = '❌ Erro: ' + (data.erro || 'desconhecido');
+          document.getElementById('status').innerText = '❌ ' + (data.erro || 'Erro desconhecido');
         }
       } catch(e) {
         document.getElementById('status').innerText = '❌ Erro ao executar';
