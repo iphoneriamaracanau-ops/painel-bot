@@ -37,7 +37,7 @@
   <h3>🤖 Controle do Bot</h3>
   <p class="sub">iPhoneria Maracanaú</p>
   <button id="btn" class="pausar" onclick="toggleBot()" disabled>⏸️ Pausar Bot</button>
-  <p id="status">⏳ Aguardando conversa...</p>
+  <p id="status">⏳ Carregando...</p>
   <p id="convinfo"></p>
   <p id="loader">⏳ Processando...</p>
 
@@ -45,90 +45,26 @@
     let convId = null;
     let pausado = false;
 
-    // Escutar mensagens do Chatwoot (postMessage)
     window.addEventListener('message', function(event) {
-      console.log('postMessage recebido:', JSON.stringify(event.data));
+      const raw = event.data;
+      if (!raw) return;
 
-      const data = event.data;
-      if (!data) return;
+      // O Chatwoot envia como STRING JSON
+      let parsed = raw;
+      if (typeof raw === 'string') {
+        try { parsed = JSON.parse(raw); } catch(e) { return; }
+      }
 
-      // Formato 1: { conversation: { id: 123 } }
-      if (data.conversation && data.conversation.id) {
-        setConvId(data.conversation.id);
-      }
-      // Formato 2: { id: 123, type: 'conversation' }
-      else if (data.id && data.type === 'conversation') {
-        setConvId(data.id);
-      }
-      // Formato 3: { conversationId: 123 }
-      else if (data.conversationId) {
-        setConvId(data.conversationId);
-      }
-      // Formato 4: { currentConversationId: 123 }
-      else if (data.currentConversationId) {
-        setConvId(data.currentConversationId);
-      }
-      // Formato 5: direto como número ou string
-      else if (data.conversation_id) {
-        setConvId(data.conversation_id);
+      // Formato confirmado: { event: "appContext", data: { conversation: { id: 140 } } }
+      if (parsed.event === 'appContext' && parsed.data && parsed.data.conversation) {
+        const id = parsed.data.conversation.id;
+        if (id) setConvId(id);
       }
     });
 
-    // Tentar pegar da URL do pai via referrer
-    try {
-      const ref = document.referrer;
-      console.log('Referrer:', ref);
-      const match = ref.match(/conversation[s]?\/(\d+)/);
-      if (match) {
-        setConvId(match[1]);
-      }
-    } catch(e) {
-      console.log('Erro referrer:', e);
-    }
-
-    // Pegar da URL atual
-    const params = new URLSearchParams(window.location.search);
-    const urlId = params.get('conversation_id');
-    if (urlId && !urlId.includes('{') && !isNaN(urlId)) {
-      setConvId(urlId);
-    }
-
-    // Solicitar dados ao Chatwoot pai
-    setTimeout(() => {
-      try {
-        window.parent.postMessage({ type: 'REQUEST_CONVERSATION_DATA' }, '*');
-        console.log('Solicitação enviada ao parent');
-      } catch(e) {}
-    }, 500);
-
-    // Fallback — pegar ID da URL do Chatwoot no parent
-    setTimeout(() => {
-      if (!convId) {
-        try {
-          const parentHref = window.parent.location.href;
-          const match = parentHref.match(/conversation[s]?\/(\d+)/);
-          if (match) {
-            setConvId(match[1]);
-          }
-        } catch(e) {
-          console.log('Não conseguiu acessar parent URL (cross-origin esperado)');
-        }
-      }
-    }, 1000);
-
-    // Timeout final
-    setTimeout(() => {
-      if (!convId) {
-        document.getElementById('status').innerText = '⚠️ ID não encontrado';
-        document.getElementById('convinfo').innerText = 'Tente reabrir a aba';
-        document.getElementById('btn').disabled = false;
-      }
-    }, 4000);
-
     function setConvId(id) {
-      if (convId) return; // já tem ID
+      if (convId) return;
       convId = String(id);
-      console.log('convId definido:', convId);
       document.getElementById('convinfo').innerText = 'Conversa #' + convId;
       document.getElementById('btn').disabled = false;
       checkStatus();
