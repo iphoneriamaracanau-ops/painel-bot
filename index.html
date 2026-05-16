@@ -73,7 +73,7 @@
     async function checkStatus() {
       if (!convId) return;
       try {
-        const res = await fetch('https://iphoneriamaracanau.app.n8n.cloud/webhook/check-bot-status?conversation_id=' + convId);
+        const res = await fetch('https://n8n.iphoneriamaracanau.com.br/webhook/check-bot-status?conversation_id=' + convId);
         const data = await res.json();
         pausado = data.pausado;
         updateUI();
@@ -106,7 +106,7 @@
       btn.disabled = true;
       loader.style.display = 'block';
       try {
-        const res = await fetch('https://iphoneriamaracanau.app.n8n.cloud/webhook/toggle-bot', {
+        const res = await fetch('https://n8n.iphoneriamaracanau.com.br/webhook/toggle-bot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversation_id: convId, pausar: !pausado })
